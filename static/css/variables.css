@@ -1,0 +1,43 @@
+/**
+ * Design tokens and base styles.
+ * Edit here to change colors, spacing, and typography globally.
+ */
+:root {
+  --bg-primary: #0A0A0A;
+  --bg-chat: #0C0C0E;
+  --bg-secondary: #111111;
+  --bg-tertiary: #1A1A1A;
+  --bg-hover: #222222;
+  --bg-sidebar: #141414;
+  --bg-sidebar-bottom: #0F0F0F;
+  --bg-panel: rgba(15, 15, 15, 0.95);
+  --accent: #7C3AED;
+  --accent-hover: #8B5CF6;
+  --accent-light: #A78BFA;
+  --text-primary: #E8E8E8;
+  --text-secondary: #9CA3AF;
+  --text-muted: #555;
+  --border: #2A2A2A;
+  --border-subtle: #1E1E1E;
+  --border-header: #1A1A1A;
+  --user-bubble: #1E1E2E;
+  --user-bubble-end: #252535;
+  --user-bubble-border: #2D2D3D;
+  --active-bg: #161622;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.65;
+}

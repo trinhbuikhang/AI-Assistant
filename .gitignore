@@ -1,0 +1,43 @@
+# Virtual environment
+venv_web/
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environment and secrets
+.env
+.env.local
+*.env
+
+# Logs and temp
+app.log
+*.log
+uploads_temp/
+
+# User data (do not commit)
+chat_history/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cursor
+.cursor/

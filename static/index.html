@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Assistant</title>
+  <!--
+  CHANGES:
+  - Added welcome screen with centered logo, dynamic greeting, "Powered by [model]", suggestion chips (pill-shaped, border #2A2A2A, hover #7C3AED)
+  - Sidebar: gradient #141414 → #0F0F0F, logo area with gradient avatar icon, + New Chat prominent (#7C3AED, hover #8B5CF6, + icon), width 280px, subtle right border #1E1E1E, noise texture overlay
+  - Model selector: dropdown style with green dot indicator, chevron, pill styling
+  - Conversation list: date groups (Today, Yesterday, Last 7 days), first line as title, hover "..." menu (clear), active item left accent bar #7C3AED + bg #161622
+  - Header: 56px height, border-bottom #1A1A1A, model badge pill with pulsing green dot, backdrop-filter blur(10px), icon buttons (clear chat, settings)
+  - Input: frosted glass panel full width (rgba(15,15,15,0.95), blur 20px), border-top #1A1A1A, input max-width 860px centered, inner shadow on textarea, attach button inside textarea left, send disabled when empty + scale(1.05) hover
+  - Message bubbles: user gradient linear-gradient(135deg,#1E1E2E,#252535), border #2D2D3D, max-width 72%; AI left 2px accent #7C3AED on hover, 8px left padding; AI avatar gradient + box-shadow; 24px gap; messageIn animation (opacity, translateY 6px)
+  - Typography: Inter 15px line-height 1.65, #E8E8E8; sidebar titles 13.5px font-weight 500; meta 11.5px #555; code JetBrains Mono 13px, bg #0D0D0D, border #222, Copy button top-right
+  - Micro-interactions: sidebar item hover transition + padding-left 2px; New Chat scale on click; send button loading spinner when streaming; typing dots bounce #7C3AED, delays 0/150/300ms; scrollbar 4px #1E1E1E, thumb #333, hover #7C3AED
+  - Depth: sidebar noise opacity 0.03; chat area bg #0C0C0E; vignette top/bottom gradient masks
+  - Mobile: sidebar hidden by default, hamburger in header, full-width input and messages
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/variables.css">
+  <link rel="stylesheet" href="/static/css/layout.css">
+  <link rel="stylesheet" href="/static/css/sidebar.css">
+  <link rel="stylesheet" href="/static/css/header.css">
+  <link rel="stylesheet" href="/static/css/messages.css">
+  <link rel="stylesheet" href="/static/css/welcome.css">
+  <link rel="stylesheet" href="/static/css/message-bubbles.css">
+  <link rel="stylesheet" href="/static/css/input.css">
+  <link rel="stylesheet" href="/static/css/mobile.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+  <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-row">
+          <div class="logo-icon" aria-hidden="true">✦</div>
+          <span class="logo">AI Assistant</span>
+        </div>
+        <button type="button" class="btn-new-chat" id="btnNewChat"><span class="icon-plus">+</span> New Chat</button>
+      </div>
+      <div class="conversations-list" id="conversationsList"></div>
+      <div class="sidebar-footer">
+        <div class="model-select-wrap">
+          <span class="model-dot" aria-hidden="true"></span>
+          <select class="model-select" id="modelSelect">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="header">
+        <div class="header-left">
+          <span class="header-title" id="headerTitle">AI Assistant</span>
+          <span class="model-badge" id="modelBadge"><span class="pulse-dot"></span><span id="modelBadgeText">—</span></span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn-header-icon" id="btnClearChat" title="Clear chat">🗑</button>
+          <button type="button" class="btn-header-icon" id="btnSettings" title="Settings">⚙</button>
+        </div>
+      </header>
+      <div class="messages-wrap" id="messagesWrap">
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-avatar" aria-hidden="true">✦</div>
+          <h2 class="welcome-headline" id="welcomeHeadline">Good day, I'm your AI Assistant</h2>
+          <p class="welcome-sub" id="welcomeSub">Powered by —</p>
+          <div class="suggestion-chips">
+            <button type="button" class="suggestion-chip" data-prompt="Help me write an email or a short document"><span class="chip-icon">✍️</span> Help me write</button>
+            <button type="button" class="suggestion-chip" data-prompt="Explain this code or concept in simple terms"><span class="chip-icon">💻</span> Explain code</button>
+            <button type="button" class="suggestion-chip" data-prompt="Summarize the following text for me"><span class="chip-icon">📄</span> Summarize text</button>
+            <button type="button" class="suggestion-chip" data-prompt="Research and explain a topic"><span class="chip-icon">🔍</span> Research topic</button>
+          </div>
+        </div>
+        <div id="messages"></div>
+      </div>
+      <div class="input-area">
+        <div class="input-inner">
+          <div class="input-hint" id="inputHint">Attach files (📎) or choose a folder (📁) to summarize. <button type="button" class="link-btn" id="btnShowPathPanel">Or type server path</button></div>
+          <div class="input-wrap">
+            <div class="file-chips" id="fileChips"></div>
+            <div class="folder-panel" id="folderPanel">
+              <input type="text" id="folderPathInput" placeholder="Folder path (e.g. C:\Users\...\project\data)" />
+              <button type="button" class="btn-folder-go" id="btnFolderGo">Summarize folder</button>
+              <button type="button" class="btn-folder-cancel" id="btnFolderCancel">Cancel</button>
+            </div>
+            <div class="input-row">
+              <div class="textarea-wrap">
+                <button type="button" class="btn-attach-inline" id="btnAttach" title="Attach file(s) — select one or multiple">📎</button>
+                <button type="button" class="btn-attach-inline" id="btnFolder" title="Choose folder — opens folder picker">📁</button>
+                <textarea id="inputText" rows="1" placeholder="Message... (Shift+Enter for new line)" autocomplete="off"></textarea>
+              </div>
+              <div class="input-btns">
+                <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.csv" multiple style="display:none">
+                <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+                <button type="button" class="btn-icon btn-send disabled" id="btnSend" title="Send"><span class="send-arrow">➤</span><span class="spinner" style="display:none"></span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div id="errorToast" class="error-toast" style="display:none"></div>
+
+  <script>
+    (function() {
+      const BASE = window.location.origin;
+      const WS_BASE = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host;
+      let ws = null;
+      let reconnectAttempts = 0;
+      const MAX_RECONNECT = 3;
+      const RECONNECT_DELAYS = [1000, 3000, 6000];
+      let currentConversationId = null;
+      let conversations = {};
+      let attachedFiles = [];
+      let streaming = false;
+      let userScrolledUp = false;
+      let scrollThreshold = 100;
+      let currentConversationTitle = null;
+
+      const messagesEl = document.getElementById('messages');
+      const messagesWrap = document.getElementById('messagesWrap');
+      const welcomeScreen = document.getElementById('welcomeScreen');
+      const welcomeHeadline = document.getElementById('welcomeHeadline');
+      const welcomeSub = document.getElementById('welcomeSub');
+      const inputText = document.getElementById('inputText');
+      const btnSend = document.getElementById('btnSend');
+      const btnNewChat = document.getElementById('btnNewChat');
+      const modelSelect = document.getElementById('modelSelect');
+      const headerTitle = document.getElementById('headerTitle');
+      const modelBadge = document.getElementById('modelBadge');
+      const modelBadgeText = document.getElementById('modelBadgeText');
+      const fileChips = document.getElementById('fileChips');
+      const fileInput = document.getElementById('fileInput');
+      const folderInput = document.getElementById('folderInput');
+      const btnAttach = document.getElementById('btnAttach');
+      const btnClearChat = document.getElementById('btnClearChat');
+      const btnSettings = document.getElementById('btnSettings');
+      const sidebar = document.getElementById('sidebar');
+      const sidebarToggle = document.getElementById('sidebarToggle');
+      const errorToast = document.getElementById('errorToast');
+      const conversationsList = document.getElementById('conversationsList');
+      const folderPanel = document.getElementById('folderPanel');
+      const folderPathInput = document.getElementById('folderPathInput');
+      const btnFolderGo = document.getElementById('btnFolderGo');
+      const btnFolderCancel = document.getElementById('btnFolderCancel');
+      const btnFolder = document.getElementById('btnFolder');
+      const btnShowPathPanel = document.getElementById('btnShowPathPanel');
+      let folderSummaryActive = false;
+
+      function setWelcomeVisibility() {
+        var hasMessages = messagesEl.querySelectorAll('.message').length > 0;
+        welcomeScreen.classList.toggle('hidden', hasMessages);
+      }
+      function setWelcomeContent() {
+        var hour = new Date().getHours();
+        var greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+        welcomeHeadline.textContent = greeting + ", I'm your AI Assistant";
+        welcomeSub.textContent = 'Powered by ' + (modelSelect.value || '—');
+      }
+      function updateSendButton() {
+        var hasText = inputText.value.trim().length > 0;
+        var hasFile = attachedFiles.length > 0;
+        var active = (hasText || hasFile) && !folderSummaryActive;
+        btnSend.classList.toggle('disabled', !active);
+        btnSend.classList.toggle('loading', streaming);
+        var arrow = btnSend.querySelector('.send-arrow');
+        var spinnerEl = btnSend.querySelector('.spinner');
+        if (arrow && spinnerEl) {
+          arrow.style.display = streaming ? 'none' : '';
+          spinnerEl.style.display = streaming ? 'block' : 'none';
+        }
+      }
+      function renderConversationsList() {
+        conversationsList.innerHTML = '';
+        if (!currentConversationTitle) return;
+        var group = document.createElement('div');
+        group.className = 'conversation-group';
+        var label = document.createElement('div');
+        label.className = 'conversation-group-label';
+        label.textContent = 'Today';
+        group.appendChild(label);
+        var item = document.createElement('div');
+        item.className = 'conversation-item active';
+        item.innerHTML = '<div class="title-wrap"><div class="title">' + escapeHtml(currentConversationTitle) + '</div><div class="meta">Current</div></div><div class="conversation-menu"><button type="button" aria-label="Clear chat">⋯</button></div>';
+        item.querySelector('.conversation-menu button').onclick = function(e) { e.stopPropagation(); clearChat(); };
+        group.appendChild(item);
+        conversationsList.appendChild(group);
+      }
+      function escapeHtml(s) {
+        var div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+      }
+      function clearChat() {
+        currentConversationId = null;
+        currentConversationTitle = null;
+        headerTitle.textContent = 'AI Assistant';
+        messagesEl.innerHTML = '';
+        streaming = false;
+        if (window._currentStreamEl) delete window._currentStreamEl;
+        removeTypingIndicator();
+        setWelcomeVisibility();
+        renderConversationsList();
+      }
+
+      function showError(msg) {
+        errorToast.textContent = msg;
+        errorToast.style.display = 'block';
+        setTimeout(function() { errorToast.style.display = 'none'; }, 5000);
+      }
+
+      function connect() {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+        const url = WS_BASE + '/ws';
+        ws = new WebSocket(url);
+        ws.onopen = function() {
+          reconnectAttempts = 0;
+          loadModels();
+        };
+        ws.onclose = function() {
+          if (reconnectAttempts < MAX_RECONNECT) {
+            const delay = RECONNECT_DELAYS[reconnectAttempts] || 6000;
+            setTimeout(connect, delay);
+            reconnectAttempts++;
+          }
+        };
+        ws.onerror = function() {};
+        ws.onmessage = function(ev) {
+          try {
+            const data = JSON.parse(ev.data);
+            if (data.type === 'token' && window._currentStreamEl) {
+              if (!window._currentStreamEl.textContent) removeTypingIndicator();
+              window._currentStreamEl.textContent += data.content || '';
+              if (!userScrolledUp) scrollToBottom();
+            } else if (data.type === 'done') {
+              if (window._currentStreamEl) {
+                const contentEl = window._currentStreamEl;
+                const full = (contentEl.getAttribute('data-raw') || '') + contentEl.textContent;
+                const rendered = marked.parse(full);
+                contentEl.innerHTML = rendered;
+                contentEl.removeAttribute('data-raw');
+                var block = contentEl.closest('.message');
+                if (block) {
+                  block.querySelectorAll('pre code').forEach(function(el) {
+                    hljs.highlightElement(el);
+                    var pre = el.closest('pre');
+                    if (pre && !pre.querySelector('.copy-btn')) {
+                      var btn = document.createElement('button');
+                      btn.className = 'copy-btn';
+                      btn.textContent = 'Copy';
+                      btn.onclick = function() {
+                        navigator.clipboard.writeText(el.textContent);
+                        btn.textContent = 'Copied!';
+                        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+                      };
+                      pre.style.paddingTop = '32px';
+                      pre.appendChild(btn);
+                    }
+                  });
+                }
+                delete window._currentStreamEl;
+              }
+              streaming = false;
+              updateSendButton();
+              removeTypingIndicator();
+              scrollToBottom();
+            } else if (data.type === 'error') {
+              removeTypingIndicator();
+              if (window._currentStreamEl) {
+                window._currentStreamEl.textContent = 'Error: ' + (data.message || 'Unknown error');
+                delete window._currentStreamEl;
+              }
+              streaming = false;
+              folderSummaryActive = false;
+              updateSendButton();
+              showError(data.message || 'Error');
+            } else if (data.type === 'folder_file') {
+              var fn = data.name || 'File';
+              var sum = data.summary || '';
+              var err = data.error || '';
+              var content = '**' + fn + '**\n\n' + (err ? '(Error: ' + err + ')' : sum);
+              addMessage(content, false, false);
+              scrollToBottom();
+            } else if (data.type === 'folder_done') {
+              folderSummaryActive = false;
+              updateSendButton();
+            }
+          } catch (e) {}
+        };
+      }
+
+      function loadModels() {
+        fetch(BASE + '/api/models').then(function(r) { return r.json(); }).then(function(d) {
+          const list = d.models || [];
+          modelSelect.innerHTML = '';
+          if (list.length === 0) modelSelect.innerHTML = '<option value="">(No models)</option>';
+          else list.forEach(function(m) {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            modelSelect.appendChild(opt);
+          });
+          modelBadgeText.textContent = modelSelect.value || '—';
+          setWelcomeContent();
+        }).catch(function() {
+          modelSelect.innerHTML = '<option value="">(Failed to load)</option>';
+        });
+      }
+      modelSelect.addEventListener('change', function() {
+        modelBadgeText.textContent = modelSelect.value || '—';
+        setWelcomeContent();
+      });
+
+      function scrollToBottom() {
+        messagesWrap.scrollTop = messagesWrap.scrollHeight;
+      }
+      messagesWrap.addEventListener('scroll', function() {
+        const nearBottom = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight < scrollThreshold;
+        userScrolledUp = !nearBottom;
+      });
+
+      function addMessage(content, isUser, isStreaming) {
+        if (isUser && content && !currentConversationTitle) {
+          currentConversationTitle = content.length > 50 ? content.slice(0, 50) + '…' : content;
+          headerTitle.textContent = currentConversationTitle;
+          renderConversationsList();
+        }
+        const block = document.createElement('div');
+        block.className = 'message ' + (isUser ? 'user' : 'assistant');
+        if (!isUser) {
+          const av = document.createElement('div');
+          av.className = 'avatar';
+          av.textContent = '◆';
+          block.appendChild(av);
+        }
+        const contentEl = document.createElement('div');
+        contentEl.className = 'message-content';
+        if (isStreaming) {
+          contentEl.setAttribute('data-raw', '');
+          contentEl.textContent = content || '';
+          window._currentStreamEl = contentEl;
+        } else if (isUser) {
+          contentEl.textContent = content;
+        } else {
+          const html = marked.parse(content || '');
+          contentEl.innerHTML = html;
+          contentEl.querySelectorAll('pre code').forEach(function(el) {
+            hljs.highlightElement(el);
+            const pre = el.closest('pre');
+            if (pre && !pre.querySelector('.copy-btn')) {
+              const btn = document.createElement('button');
+              btn.className = 'copy-btn';
+              btn.textContent = 'Copy';
+              btn.onclick = function() {
+                navigator.clipboard.writeText(el.textContent);
+                btn.textContent = 'Copied!';
+                setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+              };
+              pre.style.paddingTop = '32px';
+              pre.appendChild(btn);
+            }
+          });
+        }
+        block.appendChild(contentEl);
+        messagesEl.appendChild(block);
+        setWelcomeVisibility();
+        return block;
+      }
+
+      function addTypingIndicator() {
+        const block = document.createElement('div');
+        block.className = 'message assistant';
+        block.id = 'typingIndicator';
+        block.innerHTML = '<div class="avatar">◆</div><div class="message-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
+        messagesEl.appendChild(block);
+        scrollToBottom();
+      }
+      function removeTypingIndicator() {
+        const el = document.getElementById('typingIndicator');
+        if (el) el.remove();
+      }
+
+      function sendMessage() {
+        const text = inputText.value.trim();
+        if (!text && attachedFiles.length === 0) return;
+        if (streaming) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          showError('Not connected. Retrying...');
+          connect();
+          return;
+        }
+        streaming = true;
+        updateSendButton();
+        if (text) addMessage(text, true);
+        inputText.value = '';
+        if (attachedFiles.length === 1) {
+          var fileId = attachedFiles[0].id;
+          var name = attachedFiles[0].name;
+          attachedFiles = [];
+          renderFileChips();
+          ws.send(JSON.stringify({ type: 'chat', message: text || '', file_id: fileId, model: modelSelect.value || undefined }));
+          addTypingIndicator();
+          addMessage('', false, true);
+        } else if (attachedFiles.length > 1) {
+          var names = attachedFiles.map(function(f) { return f.name; }).join(', ');
+          addMessage('Summarizing files: ' + names, true, false);
+          var fileIds = attachedFiles.map(function(f) { return f.id; });
+          attachedFiles = [];
+          renderFileChips();
+          folderSummaryActive = true;
+          updateSendButton();
+          ws.send(JSON.stringify({ type: 'multi_file_summary', file_ids: fileIds, model: modelSelect.value || undefined }));
+        } else {
+          ws.send(JSON.stringify({ type: 'chat', message: text, file_id: null, model: modelSelect.value || undefined }));
+          addTypingIndicator();
+          addMessage('', false, true);
+        }
+      }
+
+      btnSend.addEventListener('click', sendMessage);
+      inputText.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+      function autoResize(ta) {
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+      }
+      inputText.addEventListener('input', function() { autoResize(this); updateSendButton(); });
+
+      document.querySelectorAll('.suggestion-chip').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var prompt = btn.getAttribute('data-prompt') || btn.textContent.trim();
+          inputText.value = prompt;
+          inputText.focus();
+          autoResize(inputText);
+          updateSendButton();
+        });
+      });
+
+      btnNewChat.addEventListener('click', function() { clearChat(); });
+      btnClearChat.addEventListener('click', function() { clearChat(); });
+      btnSettings.addEventListener('click', function() { /* placeholder */ });
+
+      btnFolder.addEventListener('click', function() {
+        folderInput.click();
+      });
+      folderInput.addEventListener('change', function() {
+        var files = this.files;
+        if (!files || files.length === 0) { this.value = ''; return; }
+        var allowed = ['.pdf', '.docx', '.txt', '.csv'];
+        function uploadOne(file) {
+          var form = new FormData();
+          form.append('file', file);
+          return fetch(BASE + '/upload', { method: 'POST', body: form })
+            .then(function(r) {
+              if (!r.ok) return r.text().then(function(t) { throw new Error(t || r.status); });
+              return r.json();
+            })
+            .then(function(d) { return { id: d.file_id, name: d.name || file.name }; });
+        }
+        var list = [];
+        for (var i = 0; i < files.length; i++) {
+          var ext = (files[i].name || '').toLowerCase().replace(/.*\./, '.');
+          if (allowed.indexOf(ext) !== -1) list.push(files[i]);
+        }
+        this.value = '';
+        if (list.length === 0) { showError('No supported files (.pdf, .docx, .txt, .csv) in that folder'); return; }
+        if (!ws || ws.readyState !== WebSocket.OPEN) { showError('Not connected. Retrying...'); connect(); return; }
+        var idx = 0;
+        var uploaded = [];
+        function next() {
+          if (idx >= list.length) {
+            var names = uploaded.map(function(f) { return f.name; }).join(', ');
+            addMessage('Summarizing folder (' + uploaded.length + ' files): ' + (names.length > 60 ? names.slice(0, 60) + '…' : names), true, false);
+            folderSummaryActive = true;
+            updateSendButton();
+            ws.send(JSON.stringify({ type: 'multi_file_summary', file_ids: uploaded.map(function(f) { return f.id; }), model: modelSelect.value || undefined }));
+            return;
+          }
+          uploadOne(list[idx]).then(function(item) {
+            uploaded.push(item);
+            idx++;
+            next();
+          }).catch(function(e) {
+            showError(e.message || 'Upload failed');
+            idx++;
+            next();
+          });
+        }
+        next();
+      });
+      btnShowPathPanel.addEventListener('click', function() {
+        folderPanel.classList.toggle('open');
+        if (folderPanel.classList.contains('open')) folderPathInput.focus();
+      });
+      btnFolderCancel.addEventListener('click', function() {
+        folderPanel.classList.remove('open');
+        folderPathInput.value = '';
+      });
+      btnFolderGo.addEventListener('click', function() {
+        var path = folderPathInput.value.trim();
+        if (!path) { showError('Enter a folder path'); return; }
+        if (!ws || ws.readyState !== WebSocket.OPEN) { showError('Not connected. Retrying...'); connect(); return; }
+        folderSummaryActive = true;
+        updateSendButton();
+        addMessage('Summarize folder: ' + path, true, false);
+        folderPanel.classList.remove('open');
+        folderPathInput.value = '';
+        ws.send(JSON.stringify({ type: 'folder_summary', folder_path: path, recursive: true, model: modelSelect.value || undefined }));
+      });
+      folderPathInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); btnFolderGo.click(); }
+      });
+
+      function renderFileChips() {
+        fileChips.innerHTML = '';
+        attachedFiles.forEach(function(file, idx) {
+          var chip = document.createElement('div');
+          chip.className = 'file-chip';
+          var displayName = file.name.length > 24 ? file.name.slice(0, 24) + '…' : file.name;
+          chip.innerHTML = '📄 ' + displayName + ' <button type="button" aria-label="Remove">×</button>';
+          chip.querySelector('button').onclick = function() {
+            attachedFiles.splice(idx, 1);
+            renderFileChips();
+            updateSendButton();
+          };
+          fileChips.appendChild(chip);
+        });
+      }
+      btnAttach.addEventListener('click', function() { fileInput.click(); });
+      fileInput.addEventListener('change', function() {
+        var files = this.files;
+        if (!files || files.length === 0) return;
+        var allowed = ['.pdf', '.docx', '.txt', '.csv'];
+        function uploadOne(file) {
+          return fetch(BASE + '/upload', { method: 'POST', body: (function() { var f = new FormData(); f.append('file', file); return f; })() })
+            .then(function(r) {
+              if (!r.ok) return r.text().then(function(t) { throw new Error(t || r.status); });
+              return r.json();
+            })
+            .then(function(d) { return { id: d.file_id, name: d.name || file.name }; });
+        }
+        var i = 0;
+        var inputEl = this;
+        function next() {
+          if (i >= files.length) { inputEl.value = ''; return; }
+          var file = files[i];
+          var ext = (file.name || '').toLowerCase().replace(/.*\./, '.');
+          if (allowed.indexOf(ext) === -1) { i++; next(); return; }
+          uploadOne(file).then(function(item) {
+            attachedFiles.push(item);
+            renderFileChips();
+            updateSendButton();
+            i++;
+            next();
+          }).catch(function(e) {
+            showError(e.message || 'Upload failed');
+            i++;
+            next();
+          });
+        }
+        next();
+      });
+      messagesWrap.addEventListener('dragover', function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+      messagesWrap.addEventListener('drop', function(e) {
+        e.preventDefault();
+        var droppedFiles = e.dataTransfer.files;
+        if (!droppedFiles || droppedFiles.length === 0) return;
+        var allowed = ['.pdf', '.docx', '.txt', '.csv'];
+        function uploadOne(file) {
+          var form = new FormData();
+          form.append('file', file);
+          return fetch(BASE + '/upload', { method: 'POST', body: form })
+            .then(function(r) {
+              if (!r.ok) return r.text().then(function(t) { throw new Error(t || r.status); });
+              return r.json();
+            })
+            .then(function(d) { return { id: d.file_id, name: d.name || file.name }; });
+        }
+        var i = 0;
+        function next() {
+          if (i >= droppedFiles.length) return;
+          var file = droppedFiles[i];
+          var ext = (file.name || '').toLowerCase().replace(/.*\./, '.');
+          if (allowed.indexOf(ext) === -1) { i++; next(); return; }
+          uploadOne(file).then(function(item) {
+            attachedFiles.push(item);
+            renderFileChips();
+            updateSendButton();
+            i++;
+            next();
+          }).catch(function(e) {
+            showError(e.message || 'Upload failed');
+            i++;
+            next();
+          });
+        }
+        next();
+      });
+
+      sidebarToggle.addEventListener('click', function() {
+        sidebar.classList.toggle('open');
+      });
+
+      connect();
+      updateSendButton();
+      setWelcomeVisibility();
+      setWelcomeContent();
+    })();
+  </script>
+</body>
+</html>
