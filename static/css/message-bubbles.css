@@ -25,6 +25,41 @@
   max-width: 72%;
 }
 
+.message-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.message-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.message.user .message-time {
+  text-align: right;
+}
+
+.copy-msg-btn {
+  align-self: flex-end;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.copy-msg-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
 .message.user .message-content {
   background: linear-gradient(135deg, var(--user-bubble) 0%, var(--user-bubble-end) 100%);
   border: 1px solid var(--user-bubble-border);

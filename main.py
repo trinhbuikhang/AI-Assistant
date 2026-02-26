@@ -23,7 +23,7 @@ _server_thread: threading.Thread | None = None
 
 
 def _find_free_port() -> int:
-    """Return first port from config that is not in use."""
+    """Return first port from config that is not in use. Raises RuntimeError if none available."""
     import socket
     for port in config.PORT_FALLBACKS:
         try:
@@ -32,7 +32,10 @@ def _find_free_port() -> int:
                 return port
         except OSError:
             continue
-    return config.PORT_DEFAULT
+    raise RuntimeError(
+        f"None of the configured ports {config.PORT_FALLBACKS} are available. "
+        "Free a port or change PORT_FALLBACKS in config.py."
+    )
 
 
 def _run_server(port: int) -> None:
@@ -59,7 +62,12 @@ def _wait_ready(port: int, timeout: float = 15.0) -> bool:
 def main() -> None:
     global _http_port, _server_thread
 
-    port = _find_free_port()
+    try:
+        port = _find_free_port()
+    except RuntimeError as e:
+        print(e)
+        sys.exit(1)
+
     _http_port = port
     url = f"http://127.0.0.1:{port}"
 
@@ -70,6 +78,14 @@ def main() -> None:
     if not _wait_ready(port):
         print("Server did not become ready in time. Exiting.")
         sys.exit(1)
+
+    # Warn if Ollama is not running so user knows before sending first message
+    try:
+        from app.core.ollama_client import check_ollama_running
+        if not check_ollama_running():
+            print("Warning: Ollama does not appear to be running. Start Ollama (e.g. 'ollama serve') to use the assistant.")
+    except Exception:
+        pass
 
     print(f"Server ready. Opening browser at {url}")
     webbrowser.open(url)

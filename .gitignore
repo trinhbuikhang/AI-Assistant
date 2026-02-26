@@ -27,6 +27,7 @@ uploads_temp/
 
 # User data (do not commit)
 chat_history/
+config.json
 
 # IDE / Editor
 .idea/

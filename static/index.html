@@ -31,9 +31,15 @@
   <link rel="stylesheet" href="/static/css/input.css">
   <link rel="stylesheet" href="/static/css/mobile.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
+  <div id="ollamaBanner" class="ollama-banner" style="display:none" role="alert">
+    <span id="ollamaBannerText"></span>
+    <a href="https://ollama.ai" target="_blank" rel="noopener">Get Ollama</a>
+    <button type="button" class="ollama-banner-dismiss" id="ollamaBannerDismiss" aria-label="Dismiss">×</button>
+  </div>
   <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
   <div class="app">
     <aside class="sidebar" id="sidebar">
@@ -81,7 +87,7 @@
       </div>
       <div class="input-area">
         <div class="input-inner">
-          <div class="input-hint" id="inputHint">Attach files (📎) or choose a folder (📁) to summarize. <button type="button" class="link-btn" id="btnShowPathPanel">Or type server path</button></div>
+          <div class="input-hint" id="inputHint">Attach files (📎), or choose files/folder (📁) and type your request (summarize, translate, compare...). <button type="button" class="link-btn" id="btnShowPathPanel">Or enter folder path</button></div>
           <div class="input-wrap">
             <div class="file-chips" id="fileChips"></div>
             <div class="folder-panel" id="folderPanel">
@@ -92,13 +98,20 @@
             <div class="input-row">
               <div class="textarea-wrap">
                 <button type="button" class="btn-attach-inline" id="btnAttach" title="Attach file(s) — select one or multiple">📎</button>
-                <button type="button" class="btn-attach-inline" id="btnFolder" title="Choose folder — opens folder picker">📁</button>
+                <div class="picker-wrap" id="pickerWrap">
+                  <button type="button" class="btn-attach-inline" id="btnFolder" title="Choose files or folder">📁</button>
+                  <div class="picker-dropdown" id="pickerDropdown">
+                    <button type="button" class="picker-option" id="pickerOptionFiles">Select multiple files</button>
+                    <button type="button" class="picker-option" id="pickerOptionFolder">Select folder</button>
+                  </div>
+                </div>
                 <textarea id="inputText" rows="1" placeholder="Message... (Shift+Enter for new line)" autocomplete="off"></textarea>
               </div>
               <div class="input-btns">
                 <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.csv" multiple style="display:none">
                 <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
                 <button type="button" class="btn-icon btn-send disabled" id="btnSend" title="Send"><span class="send-arrow">➤</span><span class="spinner" style="display:none"></span></button>
+                <button type="button" class="btn-icon btn-stop" id="btnStop" title="Stop generation" style="display:none">■</button>
               </div>
             </div>
           </div>
@@ -107,6 +120,32 @@
     </main>
   </div>
   <div id="errorToast" class="error-toast" style="display:none"></div>
+
+  <div id="settingsModal" class="settings-modal" aria-hidden="true">
+    <div class="settings-modal-backdrop" id="settingsModalBackdrop"></div>
+    <div class="settings-modal-panel">
+      <div class="settings-modal-header">
+        <h3 class="settings-modal-title">Settings</h3>
+        <button type="button" class="settings-modal-close" id="settingsModalClose" aria-label="Close">×</button>
+      </div>
+      <div class="settings-modal-body">
+        <form id="settingsForm" class="settings-form">
+          <label class="settings-label">System prompt</label>
+          <textarea id="settingsSystemPrompt" class="settings-input settings-textarea" rows="4" placeholder="Instructions for the AI..."></textarea>
+          <label class="settings-label">Temperature <span class="settings-hint">(0–2)</span></label>
+          <input type="number" id="settingsTemperature" class="settings-input" min="0" max="2" step="0.1" />
+          <label class="settings-label">Max tokens</label>
+          <input type="number" id="settingsMaxTokens" class="settings-input" min="1" max="128000" />
+          <label class="settings-label">Default model</label>
+          <select id="settingsDefaultModel" class="settings-input settings-select"></select>
+          <div class="settings-actions">
+            <button type="button" class="btn-settings-cancel" id="settingsCancel">Cancel</button>
+            <button type="submit" class="btn-settings-save" id="settingsSave">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 
   <script>
     (function() {
@@ -118,6 +157,7 @@
       const RECONNECT_DELAYS = [1000, 3000, 6000];
       let currentConversationId = null;
       let conversations = {};
+      let currentMessages = [];
       let attachedFiles = [];
       let streaming = false;
       let userScrolledUp = false;
@@ -142,6 +182,7 @@
       const btnAttach = document.getElementById('btnAttach');
       const btnClearChat = document.getElementById('btnClearChat');
       const btnSettings = document.getElementById('btnSettings');
+      const btnStop = document.getElementById('btnStop');
       const sidebar = document.getElementById('sidebar');
       const sidebarToggle = document.getElementById('sidebarToggle');
       const errorToast = document.getElementById('errorToast');
@@ -152,7 +193,65 @@
       const btnFolderCancel = document.getElementById('btnFolderCancel');
       const btnFolder = document.getElementById('btnFolder');
       const btnShowPathPanel = document.getElementById('btnShowPathPanel');
+      const pickerWrap = document.getElementById('pickerWrap');
+      const pickerDropdown = document.getElementById('pickerDropdown');
+      const pickerOptionFiles = document.getElementById('pickerOptionFiles');
+      const pickerOptionFolder = document.getElementById('pickerOptionFolder');
       let folderSummaryActive = false;
+      const CHAT_STORAGE_KEY = 'ai_assistant_conversations';
+
+      function loadConversationsFromStorage() {
+        try {
+          var raw = localStorage.getItem(CHAT_STORAGE_KEY);
+          if (raw) {
+            var data = JSON.parse(raw);
+            if (data && typeof data === 'object') Object.assign(conversations, data);
+          }
+        } catch (e) {}
+      }
+      function saveConversationsToStorage() {
+        try {
+          localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(conversations));
+        } catch (e) {}
+      }
+      function loadConversationsFromServer() {
+        fetch(BASE + '/api/conversations').then(function(r) { return r.json(); }).then(function(d) {
+          if (d && d.conversations && typeof d.conversations === 'object') {
+            conversations = d.conversations;
+            saveConversationsToStorage();
+          }
+          renderConversationsList();
+        }).catch(function() { renderConversationsList(); });
+      }
+      function saveConversationToServer(id, title, messages) {
+        fetch(BASE + '/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id, title: title || 'Chat', messages: messages || [] })
+        }).catch(function() {});
+      }
+      function deleteConversationOnServer(id) {
+        if (!id) return;
+        fetch(BASE + '/api/conversations/' + encodeURIComponent(id), { method: 'DELETE' }).catch(function() {});
+      }
+      function deleteConversation(id) {
+        if (!id) return;
+        delete conversations[id];
+        saveConversationsToStorage();
+        deleteConversationOnServer(id);
+        if (currentConversationId === id) {
+          currentConversationId = null;
+          currentConversationTitle = null;
+          currentMessages = [];
+          headerTitle.textContent = 'AI Assistant';
+          messagesEl.innerHTML = '';
+          streaming = false;
+          if (window._currentStreamEl) delete window._currentStreamEl;
+          removeTypingIndicator();
+          setWelcomeVisibility();
+        }
+        renderConversationsList();
+      }
 
       function setWelcomeVisibility() {
         var hasMessages = messagesEl.querySelectorAll('.message').length > 0;
@@ -170,6 +269,8 @@
         var active = (hasText || hasFile) && !folderSummaryActive;
         btnSend.classList.toggle('disabled', !active);
         btnSend.classList.toggle('loading', streaming);
+        btnSend.style.display = streaming ? 'none' : 'flex';
+        if (btnStop) btnStop.style.display = streaming ? 'flex' : 'none';
         var arrow = btnSend.querySelector('.send-arrow');
         var spinnerEl = btnSend.querySelector('.spinner');
         if (arrow && spinnerEl) {
@@ -179,28 +280,74 @@
       }
       function renderConversationsList() {
         conversationsList.innerHTML = '';
-        if (!currentConversationTitle) return;
+        var ids = Object.keys(conversations);
+        if (ids.length === 0 && !currentConversationTitle) return;
         var group = document.createElement('div');
         group.className = 'conversation-group';
         var label = document.createElement('div');
         label.className = 'conversation-group-label';
-        label.textContent = 'Today';
+        label.textContent = 'Chats';
         group.appendChild(label);
-        var item = document.createElement('div');
-        item.className = 'conversation-item active';
-        item.innerHTML = '<div class="title-wrap"><div class="title">' + escapeHtml(currentConversationTitle) + '</div><div class="meta">Current</div></div><div class="conversation-menu"><button type="button" aria-label="Clear chat">⋯</button></div>';
-        item.querySelector('.conversation-menu button').onclick = function(e) { e.stopPropagation(); clearChat(); };
-        group.appendChild(item);
+        if (currentConversationTitle) {
+          var curItem = document.createElement('div');
+          curItem.className = 'conversation-item active';
+          curItem.setAttribute('data-id', currentConversationId || '');
+          curItem.innerHTML = '<div class="title-wrap"><div class="title">' + escapeHtml(currentConversationTitle) + '</div><div class="meta">' + (currentConversationId ? '' : 'Current') + '</div></div><div class="conversation-menu"><button type="button" class="conversation-btn-delete" aria-label="Delete chat" title="Delete chat">×</button><button type="button" aria-label="Clear chat" title="Clear chat">⋯</button></div>';
+          curItem.querySelector('.conversation-menu .conversation-btn-delete').onclick = function(e) { e.stopPropagation(); if (currentConversationId) deleteConversation(currentConversationId); else clearChat(); };
+          curItem.querySelector('.conversation-menu button:last-child').onclick = function(e) { e.stopPropagation(); clearChat(); };
+          curItem.onclick = function(e) { if (!e.target.closest('.conversation-menu')) loadConversation(currentConversationId); };
+          group.appendChild(curItem);
+        }
+        ids.forEach(function(id) {
+          if (id === currentConversationId) return;
+          var c = conversations[id];
+          if (!c) return;
+          var item = document.createElement('div');
+          item.className = 'conversation-item';
+          item.setAttribute('data-id', id);
+          item.innerHTML = '<div class="title-wrap"><div class="title">' + escapeHtml(c.title || 'Chat') + '</div><div class="meta"></div></div><div class="conversation-menu"><button type="button" class="conversation-btn-delete" aria-label="Delete chat" title="Delete chat">×</button></div>';
+          item.querySelector('.conversation-btn-delete').onclick = function(e) { e.stopPropagation(); deleteConversation(id); };
+          item.onclick = function(e) { if (!e.target.closest('.conversation-menu')) loadConversation(id); };
+          group.appendChild(item);
+        });
         conversationsList.appendChild(group);
+      }
+      function loadConversation(id) {
+        if (!id || !conversations[id]) return;
+        var c = conversations[id];
+        currentConversationId = id;
+        currentConversationTitle = c.title || 'Chat';
+        currentMessages = (c.messages || []).slice();
+        headerTitle.textContent = currentConversationTitle;
+        messagesEl.innerHTML = '';
+        (c.messages || []).forEach(function(m) {
+          addMessage(m.content, m.role === 'user', false);
+        });
+        setWelcomeVisibility();
+        renderConversationsList();
       }
       function escapeHtml(s) {
         var div = document.createElement('div');
         div.textContent = s;
         return div.innerHTML;
       }
+      function safeMarkdown(text) {
+        if (typeof marked === 'undefined') return escapeHtml(text || '');
+        var raw = (text || '');
+        var html = marked.parse(raw);
+        if (typeof DOMPurify !== 'undefined') html = DOMPurify.sanitize(html);
+        return html;
+      }
       function clearChat() {
+        if (currentMessages.length > 0) {
+          var id = currentConversationId || 'c' + Date.now();
+          conversations[id] = { title: currentConversationTitle || 'Chat', messages: currentMessages.slice() };
+          saveConversationsToStorage();
+          saveConversationToServer(id, currentConversationTitle || 'Chat', currentMessages);
+        }
         currentConversationId = null;
         currentConversationTitle = null;
+        currentMessages = [];
         headerTitle.textContent = 'AI Assistant';
         messagesEl.innerHTML = '';
         streaming = false;
@@ -223,6 +370,7 @@
         ws.onopen = function() {
           reconnectAttempts = 0;
           loadModels();
+          loadConversationsFromServer();
         };
         ws.onclose = function() {
           if (reconnectAttempts < MAX_RECONNECT) {
@@ -236,14 +384,21 @@
           try {
             const data = JSON.parse(ev.data);
             if (data.type === 'token' && window._currentStreamEl) {
-              if (!window._currentStreamEl.textContent) removeTypingIndicator();
-              window._currentStreamEl.textContent += data.content || '';
+              var contentEl = window._currentStreamEl;
+              var typingDots = contentEl.querySelector('.typing-dots');
+              if (typingDots) {
+                typingDots.remove();
+                contentEl.textContent = data.content || '';
+              } else {
+                contentEl.textContent += data.content || '';
+              }
               if (!userScrolledUp) scrollToBottom();
             } else if (data.type === 'done') {
               if (window._currentStreamEl) {
                 const contentEl = window._currentStreamEl;
                 const full = (contentEl.getAttribute('data-raw') || '') + contentEl.textContent;
-                const rendered = marked.parse(full);
+                currentMessages.push({ role: 'assistant', content: full });
+                const rendered = safeMarkdown(full);
                 contentEl.innerHTML = rendered;
                 contentEl.removeAttribute('data-raw');
                 var block = contentEl.closest('.message');
@@ -264,6 +419,24 @@
                       pre.appendChild(btn);
                     }
                   });
+                  var body = block.querySelector('.message-body');
+                  if (body && !body.querySelector('.copy-msg-btn')) {
+                    var copyMsgBtn = document.createElement('button');
+                    copyMsgBtn.className = 'copy-msg-btn';
+                    copyMsgBtn.type = 'button';
+                    copyMsgBtn.title = 'Copy message';
+                    copyMsgBtn.textContent = '⎘';
+                    copyMsgBtn.onclick = function() {
+                      var el = block.querySelector('.message-content');
+                      var text = (el && (el.innerText || el.textContent || '')) ? (el.innerText || el.textContent).trim() : '';
+                      if (text) {
+                        navigator.clipboard.writeText(text);
+                        copyMsgBtn.textContent = '✓';
+                        setTimeout(function() { copyMsgBtn.textContent = '⎘'; }, 2000);
+                      }
+                    };
+                    body.appendChild(copyMsgBtn);
+                  }
                 }
                 delete window._currentStreamEl;
               }
@@ -271,10 +444,16 @@
               updateSendButton();
               removeTypingIndicator();
               scrollToBottom();
+              inputText.focus();
             } else if (data.type === 'error') {
               removeTypingIndicator();
               if (window._currentStreamEl) {
-                window._currentStreamEl.textContent = 'Error: ' + (data.message || 'Unknown error');
+                var contentEl = window._currentStreamEl;
+                var typingDots = contentEl.querySelector('.typing-dots');
+                if (typingDots) typingDots.remove();
+                var errText = 'Error: ' + (data.message || 'Unknown error');
+                contentEl.textContent = errText;
+                currentMessages.push({ role: 'assistant', content: errText });
                 delete window._currentStreamEl;
               }
               streaming = false;
@@ -299,6 +478,7 @@
       function loadModels() {
         fetch(BASE + '/api/models').then(function(r) { return r.json(); }).then(function(d) {
           const list = d.models || [];
+          const ollamaOk = d.ollama_ok !== false;
           modelSelect.innerHTML = '';
           if (list.length === 0) modelSelect.innerHTML = '<option value="">(No models)</option>';
           else list.forEach(function(m) {
@@ -309,8 +489,30 @@
           });
           modelBadgeText.textContent = modelSelect.value || '—';
           setWelcomeContent();
+          if (list.length === 0 && welcomeSub) {
+            welcomeSub.textContent = 'Install a model: run ollama pull <model> in terminal (e.g. ollama pull llama3.2).';
+          }
+          var banner = document.getElementById('ollamaBanner');
+          var bannerText = document.getElementById('ollamaBannerText');
+          if (banner && bannerText) {
+            if (!ollamaOk) {
+              bannerText.textContent = 'Ollama is not running. Start Ollama (e.g. ollama serve or open the Ollama app), then refresh. ';
+              banner.style.display = 'flex';
+            } else if (list.length === 0) {
+              bannerText.textContent = 'No models installed. Run in terminal: ollama pull llama3.2 (or another model). ';
+              banner.style.display = 'flex';
+            } else {
+              banner.style.display = 'none';
+            }
+          }
         }).catch(function() {
           modelSelect.innerHTML = '<option value="">(Failed to load)</option>';
+          var banner = document.getElementById('ollamaBanner');
+          var bannerText = document.getElementById('ollamaBannerText');
+          if (banner && bannerText) {
+            bannerText.textContent = 'Could not reach the server. Check that the app is running and refresh. ';
+            banner.style.display = 'flex';
+          }
         });
       }
       modelSelect.addEventListener('change', function() {
@@ -340,17 +542,21 @@
           av.textContent = '◆';
           block.appendChild(av);
         }
+        const contentWrap = document.createElement('div');
+        contentWrap.className = 'message-body';
         const contentEl = document.createElement('div');
         contentEl.className = 'message-content';
         if (isStreaming) {
           contentEl.setAttribute('data-raw', '');
-          contentEl.textContent = content || '';
+          var typingWrap = document.createElement('div');
+          typingWrap.className = 'typing-dots';
+          typingWrap.innerHTML = '<span></span><span></span><span></span>';
+          contentEl.appendChild(typingWrap);
           window._currentStreamEl = contentEl;
         } else if (isUser) {
           contentEl.textContent = content;
         } else {
-          const html = marked.parse(content || '');
-          contentEl.innerHTML = html;
+          contentEl.innerHTML = safeMarkdown(content || '');
           contentEl.querySelectorAll('pre code').forEach(function(el) {
             hljs.highlightElement(el);
             const pre = el.closest('pre');
@@ -368,7 +574,30 @@
             }
           });
         }
-        block.appendChild(contentEl);
+        contentWrap.appendChild(contentEl);
+        var timeStr = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        var timeEl = document.createElement('span');
+        timeEl.className = 'message-time';
+        timeEl.setAttribute('aria-hidden', 'true');
+        timeEl.textContent = timeStr;
+        contentWrap.appendChild(timeEl);
+        if (!isUser && !isStreaming) {
+          var copyMsgBtn = document.createElement('button');
+          copyMsgBtn.className = 'copy-msg-btn';
+          copyMsgBtn.type = 'button';
+          copyMsgBtn.title = 'Copy message';
+          copyMsgBtn.textContent = '⎘';
+          copyMsgBtn.onclick = function() {
+            var text = (contentEl.innerText || contentEl.textContent || '').trim();
+            if (text) {
+              navigator.clipboard.writeText(text);
+              copyMsgBtn.textContent = '✓';
+              setTimeout(function() { copyMsgBtn.textContent = '⎘'; }, 2000);
+            }
+          };
+          contentWrap.appendChild(copyMsgBtn);
+        }
+        block.appendChild(contentWrap);
         messagesEl.appendChild(block);
         setWelcomeVisibility();
         return block;
@@ -396,35 +625,33 @@
           connect();
           return;
         }
+        var fileIds = attachedFiles.map(function(f) { return f.id; });
+        var userDisplayContent = text || (fileIds.length > 0 ? fileIds.length + ' file(s) attached' : '');
+        currentMessages.push({ role: 'user', content: userDisplayContent });
         streaming = true;
         updateSendButton();
         if (text) addMessage(text, true);
+        else if (fileIds.length > 0) addMessage(fileIds.length + ' file(s) attached', true);
         inputText.value = '';
-        if (attachedFiles.length === 1) {
-          var fileId = attachedFiles[0].id;
-          var name = attachedFiles[0].name;
+        if (attachedFiles.length > 0) {
           attachedFiles = [];
           renderFileChips();
-          ws.send(JSON.stringify({ type: 'chat', message: text || '', file_id: fileId, model: modelSelect.value || undefined }));
-          addTypingIndicator();
-          addMessage('', false, true);
-        } else if (attachedFiles.length > 1) {
-          var names = attachedFiles.map(function(f) { return f.name; }).join(', ');
-          addMessage('Summarizing files: ' + names, true, false);
-          var fileIds = attachedFiles.map(function(f) { return f.id; });
-          attachedFiles = [];
-          renderFileChips();
-          folderSummaryActive = true;
-          updateSendButton();
-          ws.send(JSON.stringify({ type: 'multi_file_summary', file_ids: fileIds, model: modelSelect.value || undefined }));
-        } else {
-          ws.send(JSON.stringify({ type: 'chat', message: text, file_id: null, model: modelSelect.value || undefined }));
-          addTypingIndicator();
-          addMessage('', false, true);
         }
+        var payload = { type: 'chat', message: text || '', model: modelSelect.value || undefined, history: currentMessages };
+        if (fileIds.length === 1) payload.file_id = fileIds[0];
+        else if (fileIds.length > 1) payload.file_ids = fileIds;
+        ws.send(JSON.stringify(payload));
+        addMessage('', false, true);
+        inputText.focus();
       }
 
       btnSend.addEventListener('click', sendMessage);
+      if (btnStop) {
+        btnStop.addEventListener('click', function() {
+          if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ type: 'stop' }));
+        });
+      }
       inputText.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
@@ -449,10 +676,127 @@
 
       btnNewChat.addEventListener('click', function() { clearChat(); });
       btnClearChat.addEventListener('click', function() { clearChat(); });
-      btnSettings.addEventListener('click', function() { /* placeholder */ });
+      document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+          e.preventDefault();
+          clearChat();
+        }
+      });
+      (function setupSettings() {
+        var modal = document.getElementById('settingsModal');
+        var backdrop = document.getElementById('settingsModalBackdrop');
+        var closeBtn = document.getElementById('settingsModalClose');
+        var form = document.getElementById('settingsForm');
+        var systemPromptEl = document.getElementById('settingsSystemPrompt');
+        var temperatureEl = document.getElementById('settingsTemperature');
+        var maxTokensEl = document.getElementById('settingsMaxTokens');
+        var defaultModelEl = document.getElementById('settingsDefaultModel');
 
-      btnFolder.addEventListener('click', function() {
+        function openSettings() {
+          modal.classList.add('open');
+          modal.setAttribute('aria-hidden', 'false');
+          fetch(BASE + '/api/config')
+            .then(function(r) { return r.json(); })
+            .then(function(cfg) {
+              systemPromptEl.value = cfg.system_prompt || '';
+              temperatureEl.value = cfg.temperature != null ? cfg.temperature : 0.7;
+              maxTokensEl.value = cfg.max_tokens != null ? cfg.max_tokens : 2048;
+              var currentDefault = (cfg.default_model || '').trim();
+              fetch(BASE + '/api/models')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                  var models = d.models || [];
+                  defaultModelEl.innerHTML = '';
+                  if (currentDefault && models.indexOf(currentDefault) === -1) {
+                    var opt = document.createElement('option');
+                    opt.value = currentDefault;
+                    opt.textContent = currentDefault + ' (config)';
+                    defaultModelEl.appendChild(opt);
+                  }
+                  models.forEach(function(m) {
+                    var opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    if (m === currentDefault) opt.selected = true;
+                    defaultModelEl.appendChild(opt);
+                  });
+                  if (!defaultModelEl.value && models.length) defaultModelEl.value = models[0];
+                  if (!defaultModelEl.value && currentDefault) defaultModelEl.value = currentDefault;
+                })
+                .catch(function() { defaultModelEl.innerHTML = '<option value="">(load failed)</option>'; });
+            })
+            .catch(function() {
+              systemPromptEl.value = '';
+              temperatureEl.value = 0.7;
+              maxTokensEl.value = 2048;
+            });
+        }
+
+        function closeSettings() {
+          modal.classList.remove('open');
+          modal.setAttribute('aria-hidden', 'true');
+        }
+
+        btnSettings.addEventListener('click', openSettings);
+        if (closeBtn) closeBtn.addEventListener('click', closeSettings);
+        if (backdrop) backdrop.addEventListener('click', closeSettings);
+        document.getElementById('settingsCancel').addEventListener('click', closeSettings);
+
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          var payload = {
+            system_prompt: systemPromptEl.value.trim(),
+            temperature: parseFloat(temperatureEl.value) || 0.7,
+            max_tokens: parseInt(maxTokensEl.value, 10) || 2048,
+            default_model: defaultModelEl.value || undefined
+          };
+          fetch(BASE + '/api/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+            .then(function(r) {
+              if (!r.ok) return r.text().then(function(t) { throw new Error(t || r.status); });
+              return r.json();
+            })
+            .then(function() {
+              var newModel = payload.default_model || defaultModelEl.value;
+              if (newModel) {
+                modelSelect.value = newModel;
+                if (modelSelect.value !== newModel) {
+                  var opt = document.createElement('option');
+                  opt.value = newModel;
+                  opt.textContent = newModel;
+                  modelSelect.appendChild(opt);
+                  modelSelect.value = newModel;
+                }
+                modelBadgeText.textContent = newModel;
+                setWelcomeContent();
+              }
+              closeSettings();
+              showError('Settings saved.');
+            })
+            .catch(function(err) {
+              showError(err.message || 'Failed to save settings.');
+            });
+        });
+      })();
+
+      btnFolder.addEventListener('click', function(e) {
+        e.stopPropagation();
+        pickerWrap.classList.toggle('open');
+      });
+      pickerOptionFiles.addEventListener('click', function() {
+        pickerWrap.classList.remove('open');
+        fileInput.click();
+      });
+      pickerOptionFolder.addEventListener('click', function() {
+        pickerWrap.classList.remove('open');
         folderInput.click();
+      });
+      pickerDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+      document.addEventListener('click', function() {
+        pickerWrap.classList.remove('open');
       });
       folderInput.addEventListener('change', function() {
         var files = this.files;
@@ -478,13 +822,12 @@
         if (!ws || ws.readyState !== WebSocket.OPEN) { showError('Not connected. Retrying...'); connect(); return; }
         var idx = 0;
         var uploaded = [];
+        var inputEl = this;
         function next() {
           if (idx >= list.length) {
-            var names = uploaded.map(function(f) { return f.name; }).join(', ');
-            addMessage('Summarizing folder (' + uploaded.length + ' files): ' + (names.length > 60 ? names.slice(0, 60) + '…' : names), true, false);
-            folderSummaryActive = true;
+            uploaded.forEach(function(item) { attachedFiles.push(item); });
+            renderFileChips();
             updateSendButton();
-            ws.send(JSON.stringify({ type: 'multi_file_summary', file_ids: uploaded.map(function(f) { return f.id; }), model: modelSelect.value || undefined }));
             return;
           }
           uploadOne(list[idx]).then(function(item) {
@@ -528,7 +871,7 @@
           var chip = document.createElement('div');
           chip.className = 'file-chip';
           var displayName = file.name.length > 24 ? file.name.slice(0, 24) + '…' : file.name;
-          chip.innerHTML = '📄 ' + displayName + ' <button type="button" aria-label="Remove">×</button>';
+          chip.innerHTML = '📄 ' + escapeHtml(displayName) + ' <button type="button" aria-label="Remove">×</button>';
           chip.querySelector('button').onclick = function() {
             attachedFiles.splice(idx, 1);
             renderFileChips();
@@ -577,6 +920,15 @@
         var droppedFiles = e.dataTransfer.files;
         if (!droppedFiles || droppedFiles.length === 0) return;
         var allowed = ['.pdf', '.docx', '.txt', '.csv'];
+        var list = [];
+        for (var idx = 0; idx < droppedFiles.length; idx++) {
+          var ext = (droppedFiles[idx].name || '').toLowerCase().replace(/.*\./, '.');
+          if (allowed.indexOf(ext) !== -1) list.push(droppedFiles[idx]);
+        }
+        if (list.length === 0) {
+          showError('Supported formats: .pdf, .docx, .txt, .csv');
+          return;
+        }
         function uploadOne(file) {
           var form = new FormData();
           form.append('file', file);
@@ -589,10 +941,8 @@
         }
         var i = 0;
         function next() {
-          if (i >= droppedFiles.length) return;
-          var file = droppedFiles[i];
-          var ext = (file.name || '').toLowerCase().replace(/.*\./, '.');
-          if (allowed.indexOf(ext) === -1) { i++; next(); return; }
+          if (i >= list.length) return;
+          var file = list[i];
           uploadOne(file).then(function(item) {
             attachedFiles.push(item);
             renderFileChips();
@@ -616,6 +966,16 @@
       updateSendButton();
       setWelcomeVisibility();
       setWelcomeContent();
+      loadConversationsFromStorage();
+      renderConversationsList();
+      inputText.focus();
+      (function setupOllamaBanner() {
+        var dismiss = document.getElementById('ollamaBannerDismiss');
+        var banner = document.getElementById('ollamaBanner');
+        if (dismiss && banner) {
+          dismiss.addEventListener('click', function() { banner.style.display = 'none'; });
+        }
+      })();
     })();
   </script>
 </body>

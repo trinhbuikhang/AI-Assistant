@@ -180,6 +180,53 @@
   background: var(--bg-tertiary);
 }
 
+.picker-wrap {
+  position: absolute;
+  left: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.picker-wrap .btn-attach-inline {
+  position: static;
+  transform: none;
+}
+
+.picker-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  min-width: 160px;
+  padding: 6px 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: none;
+}
+
+.picker-wrap.open .picker-dropdown {
+  display: block;
+}
+
+.picker-option {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-option:hover {
+  background: var(--bg-tertiary);
+}
+
 .input-row textarea {
   flex: 1;
   width: 100%;
@@ -251,6 +298,15 @@
   pointer-events: none;
 }
 
+.btn-stop {
+  background: rgba(185, 28, 28, 0.9) !important;
+  color: white !important;
+}
+
+.btn-stop:hover {
+  background: rgba(153, 27, 27, 1) !important;
+}
+
 .btn-send .spinner {
   width: 18px;
   height: 18px;
@@ -278,4 +334,214 @@
   font-size: 14px;
   z-index: 1000;
   animation: messageIn 0.25s ease-out;
+}
+
+/* Ollama / models warning banner */
+.ollama-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 16px;
+  background: rgba(180, 83, 9, 0.95);
+  color: #FEF3C7;
+  font-size: 13px;
+  z-index: 1001;
+}
+
+.ollama-banner a {
+  color: #FDE68A;
+  text-decoration: underline;
+}
+
+.ollama-banner a:hover {
+  color: #FCD34D;
+}
+
+.ollama-banner-dismiss {
+  background: none;
+  border: none;
+  color: #FEF3C7;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 6px;
+  margin-left: 4px;
+}
+
+.ollama-banner-dismiss:hover {
+  color: white;
+}
+
+/* Settings modal */
+.settings-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0.2s, opacity 0.2s;
+}
+
+.settings-modal.open {
+  visibility: visible;
+  opacity: 1;
+}
+
+.settings-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.settings-modal-panel {
+  position: relative;
+  width: 90%;
+  max-width: 420px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.settings-modal-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.settings-modal-body {
+  padding: 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.settings-modal-body p {
+  margin: 0 0 12px 0;
+}
+
+.settings-modal-body p:last-child {
+  margin-bottom: 0;
+}
+
+.settings-modal-body code {
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.settings-hint {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.settings-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.settings-select {
+  cursor: pointer;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-settings-cancel,
+.btn-settings-save {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-settings-cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.btn-settings-cancel:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.btn-settings-save {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-settings-save:hover {
+  background: var(--accent-hover);
 }

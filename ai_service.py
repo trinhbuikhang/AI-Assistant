@@ -81,10 +81,12 @@ async def stream_response(
     messages: list[dict],
     model: str | None = None,
     ws_id: int | None = None,
+    stop_event: threading.Event | None = None,
 ) -> AsyncIterator[str]:
     """
     Async generator: stream LLM tokens. Uses system prompt from config.
     messages should already include the new user message.
+    If stop_event is provided, it will be set when the client sends a stop request.
     """
     cfg = load_config()
     if not model or not model.strip():
@@ -102,14 +104,14 @@ async def stream_response(
     messages_for_api.extend([{"role": m["role"], "content": m["content"]} for m in messages])
 
     token_queue: queue.Queue = queue.Queue()
-    stop_event = threading.Event()
+    event = stop_event if stop_event is not None else threading.Event()
 
     def run():
         _generate_sync_stream(
             model,
             messages_for_api,
             token_queue,
-            stop_event,
+            event,
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -134,7 +136,7 @@ async def stream_response(
                 raise RuntimeError(item["error"])
             yield item
     finally:
-        stop_event.set()
+        event.set()
 
 
 async def summarize_long_text(raw_text: str, model: str | None = None) -> str:
